@@ -34,6 +34,7 @@ android {
 dependencies {
 
     implementation ("androidx.lifecycle:lifecycle-livedata:2.8.7")
+    implementation("com.google.guava:guava:31.1-android")
     implementation( "androidx.lifecycle:lifecycle-viewmodel:2.8.7")
     implementation ("androidx.lifecycle:lifecycle-runtime:2.8.7")
     implementation ("androidx.lifecycle:lifecycle-common-java8:2.8.7")

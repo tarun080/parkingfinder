@@ -89,7 +89,7 @@ public interface BookingDao {
     @Query("SELECT * FROM bookings WHERE userId = :userId ORDER BY createdAt DESC LIMIT :limit")
     LiveData<List<BookingEntity>> getRecentBookings(String userId, int limit);
 
+    // Add the missing @Query annotation to the getActiveBookingsSync method
+    @Query("SELECT * FROM bookings WHERE userId = :userId AND status IN ('PENDING', 'CONFIRMED', 'ACTIVE')")
     List<BookingEntity> getActiveBookingsSync(String userId);
-
-//    this is the first commit lkhfk;lasd
 }

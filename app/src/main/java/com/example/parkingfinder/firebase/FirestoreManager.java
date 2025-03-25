@@ -498,6 +498,9 @@ public class FirestoreManager {
                 });
     }
 
-    public static class GetFavoritesCallback {
+    public static abstract class GetFavoritesCallback {
+        public abstract void onSuccess(List<String> favoriteIds);
+
+        public abstract void onFailure(String errorMsg);
     }
 }

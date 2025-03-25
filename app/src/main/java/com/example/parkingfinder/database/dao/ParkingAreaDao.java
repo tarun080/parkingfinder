@@ -100,5 +100,9 @@ public interface ParkingAreaDao {
     @Query("DELETE FROM parking_areas WHERE id = :id")
     void deleteById(String id);
 
+    // Added missing @Query annotation to the method
+    @Query("SELECT * FROM parking_areas WHERE " +
+            "((latitude - :latitude) * (latitude - :latitude) + " +
+            "(longitude - :longitude) * (longitude - :longitude)) <= :radiusSquared")
     List<ParkingAreaEntity> getNearbyParkingAreasSync(double latitude, double longitude, double radiusSquared);
 }
