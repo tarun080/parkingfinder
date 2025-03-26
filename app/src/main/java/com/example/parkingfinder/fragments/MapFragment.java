@@ -2,8 +2,10 @@ package com.example.parkingfinder.fragments;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.content.res.Resources;
 import android.location.Location;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -39,6 +41,7 @@ import java.util.Map;
 
 public class MapFragment extends Fragment implements OnMapReadyCallback, GoogleMap.OnMarkerClickListener {
 
+    private static final String TAG = "MapFragment";
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
     private GoogleMap mMap;
     private FusedLocationProviderClient fusedLocationClient;
@@ -88,13 +91,18 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, GoogleM
 
         // Set custom map style if needed
         try {
-            boolean success = mMap.setMapStyle(MapStyleOptions.loadRawResourceStyle(
-                    requireContext(), R.raw.map_style));
+            // Use ResourcesCompat to load the raw resource
+            boolean success = mMap.setMapStyle(
+                    MapStyleOptions.loadRawResourceStyle(
+                            requireContext(), R.raw.map_style
+                    )
+            );
+
             if (!success) {
-                // Style parsing failed
+                Log.e(TAG, "Style parsing failed.");
             }
-        } catch (Exception e) {
-            // Resource not found
+        } catch (Resources.NotFoundException e) {
+            Log.e(TAG, "Can't find style. Error: ", e);
         }
 
         // Set up map UI settings

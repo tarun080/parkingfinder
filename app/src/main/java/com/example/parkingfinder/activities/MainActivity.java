@@ -2,6 +2,7 @@ package com.example.parkingfinder.activities;
 
 import android.annotation.SuppressLint;
 import android.os.Bundle;
+import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
@@ -16,6 +17,8 @@ import com.example.parkingfinder.fragments.BookingsFragment;
 import com.example.parkingfinder.fragments.MapFragment;
 import com.example.parkingfinder.fragments.ParkingListFragment;
 import com.example.parkingfinder.fragments.ProfileFragment;
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.GoogleApiAvailability;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 
 public class MainActivity extends AppCompatActivity {
@@ -94,6 +97,20 @@ public class MainActivity extends AppCompatActivity {
     public void switchToBookingsTab() {
         if (bottomNavigationView != null) {
             bottomNavigationView.setSelectedItemId(R.id.navigation_bookings);
+        }
+    }
+
+    private void checkPlayServices() {
+        GoogleApiAvailability apiAvailability = GoogleApiAvailability.getInstance();
+        int resultCode = apiAvailability.isGooglePlayServicesAvailable(this);
+        if (resultCode != ConnectionResult.SUCCESS) {
+            if (apiAvailability.isUserResolvableError(resultCode)) {
+                apiAvailability.getErrorDialog(this, resultCode, 2404)
+                        .show();
+            } else {
+                Toast.makeText(this, "This device is not supported.", Toast.LENGTH_LONG).show();
+                finish();
+            }
         }
     }
 }

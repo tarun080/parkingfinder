@@ -38,6 +38,9 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:33.11.0"))
 
     // Firebase components - use the BoM version
+    implementation("com.google.android.gms:play-services-maps:19.2.0")
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
