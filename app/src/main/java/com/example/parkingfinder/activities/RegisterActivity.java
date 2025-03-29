@@ -3,6 +3,7 @@ package com.example.parkingfinder.activities;
 import android.content.Intent;
 import android.os.Bundle;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -16,9 +17,13 @@ import com.example.parkingfinder.R;
 import com.example.parkingfinder.firebase.FirebaseAuthManager;
 import com.example.parkingfinder.firebase.FirestoreManager;
 import com.example.parkingfinder.models.User;
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.FirebaseFirestore;
 
 public class RegisterActivity extends AppCompatActivity {
+    private static final String TAG = "RegisterActivity";
     private EditText nameEditText, emailEditText, passwordEditText, confirmPasswordEditText;
     private Button registerButton;
     private TextView loginTextView;
@@ -32,9 +37,25 @@ public class RegisterActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_register);
 
+        // Make sure Firebase is initialized
+        try {
+            if (FirebaseApp.getApps(this).isEmpty()) {
+                Log.e(TAG, "Firebase not initialized. Attempting to initialize...");
+                FirebaseApp.initializeApp(this);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error initializing Firebase: " + e.getMessage(), e);
+            Toast.makeText(this, "Error initializing Firebase. Please restart the app.", Toast.LENGTH_LONG).show();
+        }
+
         // Initialize managers
-        authManager = FirebaseAuthManager.getInstance();
-        firestoreManager = FirestoreManager.getInstance();
+        try {
+            authManager = FirebaseAuthManager.getInstance();
+            firestoreManager = FirestoreManager.getInstance();
+        } catch (Exception e) {
+            Log.e(TAG, "Error initializing managers: " + e.getMessage(), e);
+            Toast.makeText(this, "Error initializing app services: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
 
         // Initialize views
         nameEditText = findViewById(R.id.edit_text_name);
@@ -95,41 +116,98 @@ public class RegisterActivity extends AppCompatActivity {
 
         // Show progress
         progressBar.setVisibility(View.VISIBLE);
+        registerButton.setEnabled(false);
 
-        // Register user with Firebase
-        authManager.registerUser(email, password, new FirebaseAuthManager.AuthCallback() {
-            @Override
-            public void onSuccess(FirebaseUser firebaseUser) {
-                // Create user profile in Firestore
-                User user = new User();
-                user.setUid(firebaseUser.getUid());
-                user.setName(name);
-                user.setEmail(email);
-                user.setPhoneNumber("");
-                user.setProfileImageUrl("");
+        try {
+            // Direct Firebase registration as fallback
+            if (authManager == null) {
+                Log.w(TAG, "AuthManager is null, using direct Firebase Auth");
+                FirebaseAuth.getInstance().createUserWithEmailAndPassword(email, password)
+                        .addOnCompleteListener(task -> {
+                            if (task.isSuccessful()) {
+                                FirebaseUser firebaseUser = FirebaseAuth.getInstance().getCurrentUser();
 
-                firestoreManager.createUserProfile(user, new FirestoreManager.FirestoreCallback() {
-                    @Override
-                    public void onSuccess() {
-                        progressBar.setVisibility(View.GONE);
-                        Toast.makeText(RegisterActivity.this, "Registration successful", Toast.LENGTH_SHORT).show();
-                        startActivity(new Intent(RegisterActivity.this, MainActivity.class));
-                        finish();
-                    }
+                                // Create user in Firestore
+                                User user = new User();
+                                user.setUid(firebaseUser.getUid());
+                                user.setName(name);
+                                user.setEmail(email);
+                                user.setPhoneNumber("");
+                                user.setProfileImageUrl("");
 
-                    @Override
-                    public void onFailure(String errorMessage) {
-                        progressBar.setVisibility(View.GONE);
-                        Toast.makeText(RegisterActivity.this, "Error: " + errorMessage, Toast.LENGTH_LONG).show();
-                    }
-                });
+                                FirebaseFirestore.getInstance().collection("users")
+                                        .document(firebaseUser.getUid())
+                                        .set(user)
+                                        .addOnCompleteListener(firestoreTask -> {
+                                            progressBar.setVisibility(View.GONE);
+                                            registerButton.setEnabled(true);
+
+                                            if (firestoreTask.isSuccessful()) {
+                                                Toast.makeText(RegisterActivity.this, "Registration successful", Toast.LENGTH_SHORT).show();
+                                                startActivity(new Intent(RegisterActivity.this, MainActivity.class));
+                                                finish();
+                                            } else {
+                                                Toast.makeText(RegisterActivity.this,
+                                                        "User created but profile setup failed. Please update your profile later.",
+                                                        Toast.LENGTH_LONG).show();
+                                                startActivity(new Intent(RegisterActivity.this, MainActivity.class));
+                                                finish();
+                                            }
+                                        });
+                            } else {
+                                progressBar.setVisibility(View.GONE);
+                                registerButton.setEnabled(true);
+                                String errorMessage = task.getException() != null ?
+                                        task.getException().getMessage() : "Registration failed";
+                                Toast.makeText(RegisterActivity.this, "Error: " + errorMessage, Toast.LENGTH_LONG).show();
+                            }
+                        });
+                return;
             }
 
-            @Override
-            public void onFailure(String errorMessage) {
-                progressBar.setVisibility(View.GONE);
-                Toast.makeText(RegisterActivity.this, "Error: " + errorMessage, Toast.LENGTH_LONG).show();
-            }
-        });
+            // Register user with Firebase through AuthManager
+            authManager.registerUser(email, password, new FirebaseAuthManager.AuthCallback() {
+                @Override
+                public void onSuccess(FirebaseUser firebaseUser) {
+                    // Create user profile in Firestore
+                    User user = new User();
+                    user.setUid(firebaseUser.getUid());
+                    user.setName(name);
+                    user.setEmail(email);
+                    user.setPhoneNumber("");
+                    user.setProfileImageUrl("");
+
+                    firestoreManager.createUserProfile(user, new FirestoreManager.FirestoreCallback() {
+                        @Override
+                        public void onSuccess() {
+                            progressBar.setVisibility(View.GONE);
+                            registerButton.setEnabled(true);
+                            Toast.makeText(RegisterActivity.this, "Registration successful", Toast.LENGTH_SHORT).show();
+                            startActivity(new Intent(RegisterActivity.this, MainActivity.class));
+                            finish();
+                        }
+
+                        @Override
+                        public void onFailure(String errorMessage) {
+                            progressBar.setVisibility(View.GONE);
+                            registerButton.setEnabled(true);
+                            Toast.makeText(RegisterActivity.this, "Error: " + errorMessage, Toast.LENGTH_LONG).show();
+                        }
+                    });
+                }
+
+                @Override
+                public void onFailure(String errorMessage) {
+                    progressBar.setVisibility(View.GONE);
+                    registerButton.setEnabled(true);
+                    Toast.makeText(RegisterActivity.this, "Error: " + errorMessage, Toast.LENGTH_LONG).show();
+                }
+            });
+        } catch (Exception e) {
+            progressBar.setVisibility(View.GONE);
+            registerButton.setEnabled(true);
+            Log.e(TAG, "Exception during registration: " + e.getMessage(), e);
+            Toast.makeText(RegisterActivity.this, "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 }

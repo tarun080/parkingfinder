@@ -3,6 +3,7 @@ package com.example.parkingfinder.activities;
 import android.content.Intent;
 import android.os.Bundle;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -14,9 +15,12 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.example.parkingfinder.R;
 import com.example.parkingfinder.firebase.FirebaseAuthManager;
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 
 public class LoginActivity extends AppCompatActivity {
+    private static final String TAG = "LoginActivity";
     private EditText emailEditText, passwordEditText;
     private Button loginButton;
     private TextView registerTextView, forgotPasswordTextView;
@@ -27,6 +31,17 @@ public class LoginActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_login);
+
+        // Make sure Firebase is initialized
+        try {
+            if (FirebaseApp.getApps(this).isEmpty()) {
+                Log.e(TAG, "Firebase not initialized. Attempting to initialize...");
+                FirebaseApp.initializeApp(this);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error initializing Firebase: " + e.getMessage(), e);
+            Toast.makeText(this, "Error initializing Firebase. Please restart the app.", Toast.LENGTH_LONG).show();
+        }
 
         // Initialize Firebase Auth Manager
         authManager = FirebaseAuthManager.getInstance();
@@ -86,23 +101,55 @@ public class LoginActivity extends AppCompatActivity {
 
         // Show progress
         progressBar.setVisibility(View.VISIBLE);
+        loginButton.setEnabled(false);
 
-        // Attempt login
-        authManager.loginUser(email, password, new FirebaseAuthManager.AuthCallback() {
-            @Override
-            public void onSuccess(FirebaseUser user) {
-                progressBar.setVisibility(View.GONE);
-                Toast.makeText(LoginActivity.this, "Login successful", Toast.LENGTH_SHORT).show();
-                startActivity(new Intent(LoginActivity.this, MainActivity.class));
-                finish();
+        try {
+            // Direct Firebase authentication as a fallback
+            if (authManager == null) {
+                Log.w(TAG, "AuthManager is null, using direct Firebase Auth");
+                FirebaseAuth.getInstance().signInWithEmailAndPassword(email, password)
+                        .addOnCompleteListener(task -> {
+                            progressBar.setVisibility(View.GONE);
+                            loginButton.setEnabled(true);
+
+                            if (task.isSuccessful()) {
+                                Toast.makeText(LoginActivity.this, "Login successful", Toast.LENGTH_SHORT).show();
+                                startActivity(new Intent(LoginActivity.this, MainActivity.class));
+                                finish();
+                            } else {
+                                String errorMessage = task.getException() != null ?
+                                        task.getException().getMessage() : "Authentication failed";
+                                Toast.makeText(LoginActivity.this, "Error: " + errorMessage, Toast.LENGTH_LONG).show();
+                            }
+                        });
+                return;
             }
 
-            @Override
-            public void onFailure(String errorMessage) {
-                progressBar.setVisibility(View.GONE);
-                Toast.makeText(LoginActivity.this, "Error: " + errorMessage, Toast.LENGTH_LONG).show();
-            }
-        });
+            // Attempt login through AuthManager
+            authManager.loginUser(email, password, new FirebaseAuthManager.AuthCallback() {
+                @Override
+                public void onSuccess(FirebaseUser user) {
+                    progressBar.setVisibility(View.GONE);
+                    loginButton.setEnabled(true);
+                    Toast.makeText(LoginActivity.this, "Login successful", Toast.LENGTH_SHORT).show();
+                    startActivity(new Intent(LoginActivity.this, MainActivity.class));
+                    finish();
+                }
+
+                @Override
+                public void onFailure(String errorMessage) {
+                    progressBar.setVisibility(View.GONE);
+                    loginButton.setEnabled(true);
+                    Toast.makeText(LoginActivity.this, "Error: " + errorMessage, Toast.LENGTH_LONG).show();
+                    Log.e(TAG, "Login error: " + errorMessage);
+                }
+            });
+        } catch (Exception e) {
+            progressBar.setVisibility(View.GONE);
+            loginButton.setEnabled(true);
+            Log.e(TAG, "Exception during login: " + e.getMessage(), e);
+            Toast.makeText(LoginActivity.this, "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 
     private void showPasswordResetDialog() {
@@ -116,18 +163,38 @@ public class LoginActivity extends AppCompatActivity {
         }
 
         progressBar.setVisibility(View.VISIBLE);
-        authManager.sendPasswordResetEmail(email, new FirebaseAuthManager.AuthCallback() {
-            @Override
-            public void onSuccess(FirebaseUser user) {
-                progressBar.setVisibility(View.GONE);
-                Toast.makeText(LoginActivity.this, "Reset email sent to " + email, Toast.LENGTH_LONG).show();
+
+        try {
+            if (authManager == null) {
+                FirebaseAuth.getInstance().sendPasswordResetEmail(email)
+                        .addOnCompleteListener(task -> {
+                            progressBar.setVisibility(View.GONE);
+                            if (task.isSuccessful()) {
+                                Toast.makeText(LoginActivity.this, "Reset email sent to " + email, Toast.LENGTH_LONG).show();
+                            } else {
+                                Toast.makeText(LoginActivity.this, "Error sending reset email", Toast.LENGTH_LONG).show();
+                            }
+                        });
+                return;
             }
 
-            @Override
-            public void onFailure(String errorMessage) {
-                progressBar.setVisibility(View.GONE);
-                Toast.makeText(LoginActivity.this, "Error: " + errorMessage, Toast.LENGTH_LONG).show();
-            }
-        });
+            authManager.sendPasswordResetEmail(email, new FirebaseAuthManager.AuthCallback() {
+                @Override
+                public void onSuccess(FirebaseUser user) {
+                    progressBar.setVisibility(View.GONE);
+                    Toast.makeText(LoginActivity.this, "Reset email sent to " + email, Toast.LENGTH_LONG).show();
+                }
+
+                @Override
+                public void onFailure(String errorMessage) {
+                    progressBar.setVisibility(View.GONE);
+                    Toast.makeText(LoginActivity.this, "Error: " + errorMessage, Toast.LENGTH_LONG).show();
+                }
+            });
+        } catch (Exception e) {
+            progressBar.setVisibility(View.GONE);
+            Log.e(TAG, "Exception during password reset: " + e.getMessage(), e);
+            Toast.makeText(LoginActivity.this, "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 }

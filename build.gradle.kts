@@ -16,15 +16,6 @@ buildscript {
     }
 }
 
-// Make sure all projects have access to the necessary repositories
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-        // Add any other repositories you might need
-    }
-}
-
 tasks.register("clean", Delete::class) {
     delete(layout.buildDirectory)
 }
