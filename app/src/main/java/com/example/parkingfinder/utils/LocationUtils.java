@@ -16,8 +16,9 @@ import androidx.core.app.ActivityCompat;
 
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.tasks.OnSuccessListener;
+
+import org.osmdroid.util.GeoPoint;
 
 import java.io.IOException;
 import java.util.List;
@@ -59,6 +60,21 @@ public class LocationUtils {
 
         // Before Android Q, background location was included in normal location permissions
         return hasLocationPermissions(context);
+    }
+
+    /**
+     * Check if storage permissions are granted for OSMDroid tile cache
+     */
+    public static boolean hasStoragePermission(Context context) {
+        if (context == null) return false;
+
+        // For Android 10+ (Q), we don't need external storage permission
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            return true;
+        }
+
+        return ActivityCompat.checkSelfPermission(
+                context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
     }
 
     /**
@@ -121,14 +137,33 @@ public class LocationUtils {
     }
 
     /**
-     * Calculate distance between a location and a LatLng point
+     * Calculate distance between a location and a GeoPoint
      */
-    public static double calculateDistance(Location location, LatLng point) {
+    public static double calculateDistance(Location location, GeoPoint point) {
         if (location == null || point == null) return -1;
 
         return calculateDistance(
                 location.getLatitude(), location.getLongitude(),
-                point.latitude, point.longitude);
+                point.getLatitude(), point.getLongitude());
+    }
+
+    /**
+     * Calculate distance between two GeoPoints
+     */
+    public static double calculateDistance(GeoPoint point1, GeoPoint point2) {
+        if (point1 == null || point2 == null) return -1;
+
+        return calculateDistance(
+                point1.getLatitude(), point1.getLongitude(),
+                point2.getLatitude(), point2.getLongitude());
+    }
+
+    /**
+     * Convert Location to GeoPoint
+     */
+    public static GeoPoint locationToGeoPoint(Location location) {
+        if (location == null) return null;
+        return new GeoPoint(location.getLatitude(), location.getLongitude());
     }
 
     /**
@@ -256,28 +291,45 @@ public class LocationUtils {
     }
 
     /**
-     * Create an intent to open Google Maps with directions to a location
+     * Create an intent to open an external maps application with navigation
+     * Works with multiple map apps including OSMAnd, Maps.me, and Google Maps
      */
     public static Intent createNavigationIntent(double latitude, double longitude) {
-        Uri gmmIntentUri = Uri.parse("google.navigation:q=" + latitude + "," + longitude);
-        Intent mapIntent = new Intent(Intent.ACTION_VIEW, gmmIntentUri);
-        mapIntent.setPackage("com.google.android.apps.maps");
+        // Generic geo intent that should work with most mapping apps
+        Uri geoUri = Uri.parse("geo:" + latitude + "," + longitude + "?q=" + latitude + "," + longitude);
+        Intent mapIntent = new Intent(Intent.ACTION_VIEW, geoUri);
+
         return mapIntent;
     }
 
     /**
-     * Create an intent to open Google Maps showing a location
+     * Create an intent to open a maps application showing a location
+     * Works with multiple map apps
      */
     public static Intent createMapViewIntent(double latitude, double longitude, String label) {
-        Uri gmmIntentUri;
+        Uri geoUri;
         if (label != null && !label.isEmpty()) {
-            gmmIntentUri = Uri.parse("geo:" + latitude + "," + longitude + "?q=" + latitude + "," + longitude + "(" + Uri.encode(label) + ")");
+            geoUri = Uri.parse("geo:" + latitude + "," + longitude + "?q=" + latitude + "," + longitude + "(" + Uri.encode(label) + ")");
         } else {
-            gmmIntentUri = Uri.parse("geo:" + latitude + "," + longitude + "?q=" + latitude + "," + longitude);
+            geoUri = Uri.parse("geo:" + latitude + "," + longitude + "?q=" + latitude + "," + longitude);
         }
-        Intent mapIntent = new Intent(Intent.ACTION_VIEW, gmmIntentUri);
-        mapIntent.setPackage("com.google.android.apps.maps");
+        Intent mapIntent = new Intent(Intent.ACTION_VIEW, geoUri);
+
         return mapIntent;
+    }
+
+    /**
+     * Create an intent to open OSMAnd with navigation if installed
+     */
+    public static Intent createOSMAndNavigationIntent(double latitude, double longitude, String name) {
+        Uri osmUri = Uri.parse("osmand.navigation:q=" + latitude + "," + longitude);
+        if (name != null && !name.isEmpty()) {
+            osmUri = Uri.parse("osmand.navigation:q=" + latitude + "," + longitude + "&name=" + Uri.encode(name));
+        }
+        Intent osmIntent = new Intent(Intent.ACTION_VIEW, osmUri);
+        osmIntent.setPackage("net.osmand");
+
+        return osmIntent;
     }
 
     /**

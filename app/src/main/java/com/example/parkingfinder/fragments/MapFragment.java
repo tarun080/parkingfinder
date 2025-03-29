@@ -1,10 +1,11 @@
 package com.example.parkingfinder.fragments;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.pm.PackageManager;
-import android.content.res.Resources;
 import android.location.Location;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -24,26 +25,30 @@ import com.example.parkingfinder.utils.PermissionUtils;
 import com.example.parkingfinder.viewmodels.MapViewModel;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.maps.CameraUpdateFactory;
-import com.google.android.gms.maps.GoogleMap;
-import com.google.android.gms.maps.OnMapReadyCallback;
-import com.google.android.gms.maps.SupportMapFragment;
-import com.google.android.gms.maps.model.BitmapDescriptorFactory;
-import com.google.android.gms.maps.model.LatLng;
-import com.google.android.gms.maps.model.MapStyleOptions;
-import com.google.android.gms.maps.model.Marker;
-import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.tasks.OnSuccessListener;
+
+import org.osmdroid.api.IMapController;
+import org.osmdroid.config.Configuration;
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory;
+import org.osmdroid.util.GeoPoint;
+import org.osmdroid.views.MapView;
+import org.osmdroid.views.overlay.Marker;
+import org.osmdroid.views.overlay.gestures.RotationGestureOverlay;
+import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider;
+import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class MapFragment extends Fragment implements OnMapReadyCallback, GoogleMap.OnMarkerClickListener {
+public class MapFragment extends Fragment implements Marker.OnMarkerClickListener {
 
     private static final String TAG = "MapFragment";
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
-    private GoogleMap mMap;
+
+    private MapView map;
+    private IMapController mapController;
+    private MyLocationNewOverlay myLocationOverlay;
     private FusedLocationProviderClient fusedLocationClient;
     private MapViewModel mapViewModel;
     private Map<Marker, ParkingArea> markerParkingAreaMap = new HashMap<>();
@@ -55,8 +60,33 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, GoogleM
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
+        // Initialize OSMDroid configuration
+        Context ctx = requireActivity().getApplicationContext();
+        Configuration.getInstance().load(ctx, PreferenceManager.getDefaultSharedPreferences(ctx));
+
         // Inflate the layout for this fragment
-        return inflater.inflate(R.layout.fragment_map, container, false);
+        View rootView = inflater.inflate(R.layout.fragment_map, container, false);
+
+        // Initialize map view
+        map = rootView.findViewById(R.id.map);
+        map.setTileSource(TileSourceFactory.MAPNIK);
+        map.setMultiTouchControls(true);
+
+        // Add rotation support
+        RotationGestureOverlay rotationGestureOverlay = new RotationGestureOverlay(map);
+        rotationGestureOverlay.setEnabled(true);
+        map.getOverlays().add(rotationGestureOverlay);
+
+        // Add my location overlay
+        myLocationOverlay = new MyLocationNewOverlay(new GpsMyLocationProvider(ctx), map);
+        myLocationOverlay.enableMyLocation();
+        map.getOverlays().add(myLocationOverlay);
+
+        // Get map controller
+        mapController = map.getController();
+        mapController.setZoom(15.0);
+
+        return rootView;
     }
 
     @Override
@@ -65,13 +95,6 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, GoogleM
 
         // Initialize view model
         mapViewModel = new ViewModelProvider(requireActivity()).get(MapViewModel.class);
-
-        // Get the SupportMapFragment and request notification when the map is ready
-        SupportMapFragment mapFragment = (SupportMapFragment) getChildFragmentManager()
-                .findFragmentById(R.id.map);
-        if (mapFragment != null) {
-            mapFragment.getMapAsync(this);
-        }
 
         // Initialize FusedLocationProviderClient
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(requireActivity());
@@ -83,36 +106,6 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, GoogleM
                 displayParkingAreas(parkingAreas);
             }
         });
-    }
-
-    @Override
-    public void onMapReady(GoogleMap googleMap) {
-        mMap = googleMap;
-
-        // Set custom map style if needed
-        try {
-            // Use ResourcesCompat to load the raw resource
-            boolean success = mMap.setMapStyle(
-                    MapStyleOptions.loadRawResourceStyle(
-                            requireContext(), R.raw.map_style
-                    )
-            );
-
-            if (!success) {
-                Log.e(TAG, "Style parsing failed.");
-            }
-        } catch (Resources.NotFoundException e) {
-            Log.e(TAG, "Can't find style. Error: ", e);
-        }
-
-        // Set up map UI settings
-        mMap.getUiSettings().setZoomControlsEnabled(true);
-        mMap.getUiSettings().setMyLocationButtonEnabled(true);
-        mMap.getUiSettings().setCompassEnabled(true);
-        mMap.getUiSettings().setMapToolbarEnabled(true);
-
-        // Set marker click listener
-        mMap.setOnMarkerClickListener(this);
 
         // Check for location permission
         enableMyLocation();
@@ -126,7 +119,7 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, GoogleM
                     Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                 return;
             }
-            mMap.setMyLocationEnabled(true);
+            myLocationOverlay.enableMyLocation();
             getLastKnownLocation();
         } else {
             // Request location permission
@@ -150,8 +143,8 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, GoogleM
                         // Got last known location
                         if (location != null) {
                             // Move camera to user's location
-                            LatLng userLocation = new LatLng(location.getLatitude(), location.getLongitude());
-                            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(userLocation, 15));
+                            GeoPoint userLocation = new GeoPoint(location.getLatitude(), location.getLongitude());
+                            mapController.setCenter(userLocation);
 
                             // Load nearby parking areas
                             mapViewModel.loadNearbyParkingAreas(location.getLatitude(), location.getLongitude(), 5.0);
@@ -161,36 +154,41 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, GoogleM
     }
 
     private void displayParkingAreas(List<ParkingArea> parkingAreas) {
-        if (mMap == null) return;
+        if (map == null) return;
 
         // Clear existing markers
-        mMap.clear();
+        for (Marker marker : markerParkingAreaMap.keySet()) {
+            map.getOverlays().remove(marker);
+        }
         markerParkingAreaMap.clear();
 
         for (ParkingArea parkingArea : parkingAreas) {
-            LatLng position = new LatLng(parkingArea.getLatitude(), parkingArea.getLongitude());
+            GeoPoint position = new GeoPoint(parkingArea.getLatitude(), parkingArea.getLongitude());
+
+            Marker marker = new Marker(map);
+            marker.setPosition(position);
+            marker.setTitle(parkingArea.getName());
+            marker.setSnippet("Available: " + parkingArea.getAvailableSpots() + "/" + parkingArea.getTotalSpots());
 
             // Customize marker based on available spots
-            float markerColor = BitmapDescriptorFactory.HUE_RED;
             if (parkingArea.getAvailableSpots() > 0) {
-                markerColor = BitmapDescriptorFactory.HUE_GREEN;
+                marker.setIcon(getResources().getDrawable(R.drawable.ic_marker_available));
             } else if (parkingArea.getAvailableSpots() <= 5) {
-                markerColor = BitmapDescriptorFactory.HUE_ORANGE;
+                marker.setIcon(getResources().getDrawable(R.drawable.ic_marker_limited));
+            } else {
+                marker.setIcon(getResources().getDrawable(R.drawable.ic_marker_unavailable));
             }
 
-            MarkerOptions markerOptions = new MarkerOptions()
-                    .position(position)
-                    .title(parkingArea.getName())
-                    .snippet("Available: " + parkingArea.getAvailableSpots() + "/" + parkingArea.getTotalSpots())
-                    .icon(BitmapDescriptorFactory.defaultMarker(markerColor));
-
-            Marker marker = mMap.addMarker(markerOptions);
+            marker.setOnMarkerClickListener(this);
+            map.getOverlays().add(marker);
             markerParkingAreaMap.put(marker, parkingArea);
         }
+
+        map.invalidate(); // Refresh map view
     }
 
     @Override
-    public boolean onMarkerClick(Marker marker) {
+    public boolean onMarkerClick(Marker marker, MapView mapView) {
         ParkingArea parkingArea = markerParkingAreaMap.get(marker);
         if (parkingArea != null) {
             // Navigate to parking details
@@ -209,5 +207,19 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, GoogleM
                 Toast.makeText(requireContext(), "Location permission is required to show nearby parking", Toast.LENGTH_LONG).show();
             }
         }
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        // This is needed for OSMDroid
+        map.onResume();
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        // This is needed for OSMDroid
+        map.onPause();
     }
 }
