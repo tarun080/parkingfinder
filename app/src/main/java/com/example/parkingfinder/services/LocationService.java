@@ -22,13 +22,15 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.example.parkingfinder.R;
 import com.example.parkingfinder.activities.MainActivity;
+import com.example.parkingfinder.utils.GoogleApiHelper;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.Priority;
 
-public class LocationService extends Service {
+public class LocationService extends Service implements GoogleApiHelper.ConnectionListener {
 
     private static final String TAG = "LocationService";
     private static final String CHANNEL_ID = "location_notification_channel";
@@ -43,6 +45,8 @@ public class LocationService extends Service {
     private FusedLocationProviderClient fusedLocationClient;
     private LocationRequest locationRequest;
     private LocationCallback locationCallback;
+    private GoogleApiHelper googleApiHelper;
+    private boolean isRequestingLocationUpdates = false;
 
     // Intent actions
     public static final String ACTION_START_LOCATION_SERVICE = "com.example.parkingfinder.action.START_LOCATION_SERVICE";
@@ -56,18 +60,24 @@ public class LocationService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+
+        // Initialize GoogleApiHelper first
+        googleApiHelper = new GoogleApiHelper(this, this);
+
+        // Initialize other location components
         initializeLocationComponents();
     }
 
     private void initializeLocationComponents() {
+        // Initialize FusedLocationProviderClient
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
-        // Create location request
-        locationRequest = LocationRequest.create()
-                .setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY)
-                .setInterval(UPDATE_INTERVAL)
-                .setFastestInterval(FASTEST_INTERVAL)
-                .setSmallestDisplacement(SMALLEST_DISPLACEMENT);
+        // Create location request using modern builder
+        locationRequest = new LocationRequest.Builder(UPDATE_INTERVAL)
+                .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
+                .setMinUpdateIntervalMillis(FASTEST_INTERVAL)
+                .setMinUpdateDistanceMeters(SMALLEST_DISPLACEMENT)
+                .build();
 
         // Create location callback
         locationCallback = new LocationCallback() {
@@ -101,7 +111,9 @@ public class LocationService extends Service {
             String action = intent.getAction();
             if (action != null) {
                 if (action.equals(ACTION_START_LOCATION_SERVICE)) {
-                    startLocationUpdates();
+                    // Connect to Google API first, which will trigger startLocationUpdates when connected
+                    startForeground(NOTIFICATION_ID, buildNotification());
+                    googleApiHelper.connect();
                 } else if (action.equals(ACTION_STOP_LOCATION_SERVICE)) {
                     stopLocationUpdates();
                 }
@@ -110,14 +122,29 @@ public class LocationService extends Service {
         return START_STICKY;
     }
 
+    @Override
+    public void onConnected() {
+        // Google API connected, now we can start location updates
+        startLocationUpdates();
+    }
+
+    @Override
+    public void onConnectionFailed() {
+        Log.e(TAG, "Google API connection failed, trying to start location updates directly");
+        // Try to start location updates directly as fallback
+        startLocationUpdates();
+    }
+
     private void startLocationUpdates() {
+        // Don't start twice
+        if (isRequestingLocationUpdates) {
+            return;
+        }
+
         // Create notification channel for Oreo and above
         createNotificationChannel();
 
-        // Start foreground service with notification
-        startForeground(NOTIFICATION_ID, buildNotification());
-
-        // Request location updates
+        // Check permissions
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
                 && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             Log.e(TAG, "Location permission not granted");
@@ -125,13 +152,32 @@ public class LocationService extends Service {
             return;
         }
 
-        fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
-        Log.d(TAG, "Location updates started");
+        // Request location updates with explicit looper
+        try {
+            fusedLocationClient.requestLocationUpdates(
+                    locationRequest,
+                    locationCallback,
+                    Looper.getMainLooper()
+            );
+            isRequestingLocationUpdates = true;
+            Log.d(TAG, "Location updates started successfully");
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to start location updates: " + e.getMessage(), e);
+            stopSelf();
+        }
     }
 
     private void stopLocationUpdates() {
         // Remove location updates
-        fusedLocationClient.removeLocationUpdates(locationCallback);
+        if (fusedLocationClient != null && locationCallback != null) {
+            fusedLocationClient.removeLocationUpdates(locationCallback);
+            isRequestingLocationUpdates = false;
+        }
+
+        // Disconnect Google API
+        if (googleApiHelper != null) {
+            googleApiHelper.disconnect();
+        }
 
         // Stop foreground service
         stopForeground(true);
@@ -166,7 +212,9 @@ public class LocationService extends Service {
             serviceChannel.enableVibration(false);
 
             NotificationManager manager = getSystemService(NotificationManager.class);
-            manager.createNotificationChannel(serviceChannel);
+            if (manager != null) {
+                manager.createNotificationChannel(serviceChannel);
+            }
         }
     }
 
@@ -180,9 +228,8 @@ public class LocationService extends Service {
     public void onDestroy() {
         super.onDestroy();
 
-        if (fusedLocationClient != null && locationCallback != null) {
-            fusedLocationClient.removeLocationUpdates(locationCallback);
-        }
+        // Ensure we clean up resources
+        stopLocationUpdates();
     }
 
     // Helper method for starting the service

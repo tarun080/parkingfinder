@@ -2,13 +2,23 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     package="com.example.parkingfinder">
-    <!-- Permissions -->
+
+    <!-- Core permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Location permissions -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Required for some Google API implementations -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="com.google.android.gms.permission.ACTIVITY_RECOGNITION" />
+
+    <!-- Features -->
     <uses-feature
         android:glEsVersion="0x00020000"
         android:required="true" />
@@ -17,7 +27,7 @@
         android:name="android.hardware.location.gps"
         android:required="true" />
 
-    <!-- Add OSMDroid specific permissions -->
+    <!-- OSMDroid specific permissions -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 
@@ -30,19 +40,22 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:requestLegacyExternalStorage="true"
+        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.ParkingFinder">
 
-        <!-- Service declaration moved inside application tag -->
+        <!-- Service declaration for location -->
         <service
             android:name=".services.LocationService"
-            android:foregroundServiceType="location" />
+            android:foregroundServiceType="location"
+            android:enabled="true"
+            android:exported="false" />
 
+        <!-- Activity declarations -->
         <activity
             android:name=".activities.ProfileActivity"
             android:exported="false" />
 
-        <!-- Removed Google Maps API Key -->
-
+        <!-- Google Play Services metadata -->
         <meta-data
             android:name="com.google.android.gms.version"
             android:value="@integer/google_play_services_version" />
@@ -52,22 +65,39 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity> <!-- Authentication Activities -->
+        </activity>
+
+        <!-- Authentication Activities -->
         <activity
             android:name=".activities.LoginActivity"
             android:exported="false" />
         <activity
             android:name=".activities.RegisterActivity"
-            android:exported="false" /> <!-- Parking Related Activities -->
+            android:exported="false" />
+
+        <!-- Parking Related Activities -->
         <activity
             android:name=".activities.ParkingDetailsActivity"
             android:exported="false" />
         <activity
             android:name=".activities.BookingActivity"
             android:exported="false" />
+        <activity
+            android:name=".activities.BookingDetailsActivity"
+            android:exported="false" />
+
+        <!-- Provider declarations -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

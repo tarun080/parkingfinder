@@ -15,6 +15,9 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Add MultiDex support
+        multiDexEnabled = true
     }
 
     buildTypes {
@@ -60,8 +63,16 @@ android {
 }
 
 dependencies {
+    // Add multidex support
+    implementation("androidx.multidex:multidex:2.0.1")
+
     // Location Services
-    implementation("com.google.android.gms:play-services-location:21.0.1") // Downgrade to a stable version
+    implementation("com.google.android.gms:play-services-location:21.0.1")
+    implementation("com.google.android.gms:play-services-maps:18.2.0")
+    implementation("com.google.android.gms:play-services-base:18.3.0")
+
+    // Security provider
+    implementation("com.google.android.gms:play-services-safetynet:18.0.1")
 
     // OSMDroid dependencies - simplified to reduce conflicts
     implementation("org.osmdroid:osmdroid-android:6.1.16")

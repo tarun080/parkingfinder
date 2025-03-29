@@ -7,8 +7,10 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.location.LocationManager;
 import android.net.Uri;
+import android.os.Build;
 import android.provider.Settings;
 
+import androidx.activity.result.ActivityResultLauncher;
 import androidx.appcompat.app.AlertDialog;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -19,27 +21,62 @@ import java.util.List;
 public class PermissionUtils {
 
     public static final int LOCATION_PERMISSION_REQUEST_CODE = 1001;
+    public static final int BACKGROUND_LOCATION_PERMISSION_REQUEST_CODE = 1002;
 
     /**
      * Check if location permissions are granted
      */
     public static boolean hasLocationPermission(Context context) {
-        return ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED &&
+        return ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
                 ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
     }
 
     /**
-     * Request location permissions
+     * Check if background location permission is granted (for Android 10+)
+     */
+    public static boolean hasBackgroundLocationPermission(Context context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            return ContextCompat.checkSelfPermission(context,
+                    Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        }
+
+        // Before Android Q, background location was included in normal location permissions
+        return hasLocationPermission(context);
+    }
+
+    /**
+     * Request location permissions with proper handling of Android version differences
      */
     public static void requestLocationPermission(Activity activity) {
-        ActivityCompat.requestPermissions(
-                activity,
-                new String[]{
-                        Manifest.permission.ACCESS_FINE_LOCATION,
-                        Manifest.permission.ACCESS_COARSE_LOCATION
-                },
-                LOCATION_PERMISSION_REQUEST_CODE
-        );
+        String[] permissions;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // For Android 10+, we need to request foreground location first
+            permissions = new String[]{
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+            };
+        } else {
+            permissions = new String[]{
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+            };
+        }
+
+        ActivityCompat.requestPermissions(activity, permissions, LOCATION_PERMISSION_REQUEST_CODE);
+    }
+
+    /**
+     * Request background location permission for Android 10+ (should be called after foreground permission)
+     */
+    public static void requestBackgroundLocationPermission(Activity activity) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ActivityCompat.requestPermissions(
+                    activity,
+                    new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION},
+                    BACKGROUND_LOCATION_PERMISSION_REQUEST_CODE
+            );
+        }
     }
 
     /**
@@ -120,5 +157,15 @@ public class PermissionUtils {
         }
 
         return missingPermissions.toArray(new String[0]);
+    }
+
+    /**
+     * Create an intent to open app settings to enable location
+     */
+    public static Intent createLocationSettingsIntent(Context context) {
+        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+        Uri uri = Uri.fromParts("package", context.getPackageName(), null);
+        intent.setData(uri);
+        return intent;
     }
 }
